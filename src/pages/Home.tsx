@@ -1,97 +1,133 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchPodcasts, fetchLatestEpisodes } from '../api';
-import { usePlayerStore, Episode } from '../store/playerStore';
-import { Play, Pause } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { PWAInstallButton } from '../components/PWAInstallButton';
+import React, { useEffect, useState } from 'react';
+import { Podcast, Episode } from '../types';
+import { PodcastCard } from '../components/PodcastCard';
+import { EpisodeCard } from '../components/EpisodeCard';
+import { TrendingUp, Radio } from 'lucide-react';
+import { STATIC_PODCASTS } from '../data/podcastsData';
 
-export default function Home() {
-  const { data: podcasts, isLoading: loadingPodcasts } = useQuery({ queryKey: ['podcasts'], queryFn: fetchPodcasts });
-  const { data: latestEpisodes, isLoading: loadingEpisodes } = useQuery({ queryKey: ['latestEpisodes'], queryFn: () => fetchLatestEpisodes(10) });
+export const Home: React.FC = () => {
+  const [featuredPodcasts, setFeaturedPodcasts] = useState<Podcast[]>([]);
+  const [recentEpisodes, setRecentEpisodes] = useState<Episode[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const { play, togglePlay, isPlaying, currentEpisode } = usePlayerStore();
+  useEffect(() => {
+    fetchHomeData();
+  }, []);
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) return 'Chào buổi sáng';
-    if (hour >= 12 && hour < 18) return 'Chào buổi chiều';
-    return 'Chào buổi tối';
-  };
+  const fetchHomeData = async () => {
+    try {
+      setLoading(true);
 
-  const handlePlayEpisode = (episode: Episode) => {
-    if (currentEpisode?.id === episode.id) {
-      togglePlay();
-    } else {
-      play(episode, latestEpisodes);
+      // 1. Chuyển đổi STATIC_PODCASTS sang format Podcast chuẩn của giao diện
+      const formattedPodcasts: Podcast[] = STATIC_PODCASTS.map((p) => ({
+        id: p.id,
+        title: p.title,
+        author: p.author || 'Tác giả',
+        description: p.description || '',
+        coverUrl: p.image,
+        feedUrl: p.feedUrl,
+        category: p.categories?.[0] || 'Podcast',
+        episodeCount: p.episodes?.length || 0,
+      }));
+
+      // Luôn hiển thị ngay 8 kênh podcast lập tức, không đợi API
+      setFeaturedPodcasts(formattedPodcasts);
+
+      // 2. Thử nạp từ backend API hoặc podcasts.json nếu có
+      try {
+        const res = await fetch('./podcasts.json');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const allEps = data.flatMap((p: any) =>
+              (p.episodes || []).map((ep: any) => ({
+                id: ep.id,
+                podcastId: p.id,
+                podcastTitle: p.title,
+                podcastCover: p.image,
+                title: ep.title,
+                description: ep.description || '',
+                audioUrl: ep.audioUrl,
+                duration: 1800,
+                publishedAt: ep.pubDate ? new Date(ep.pubDate).toISOString() : new Date().toISOString(),
+              }))
+            );
+            if (allEps.length > 0) {
+              setRecentEpisodes(allEps.slice(0, 10));
+            }
+          }
+        }
+      } catch (e) {}
+
+    } catch (error) {
+      console.error('Error loading home data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Chào buổi sáng';
+    if (hour < 18) return 'Chào buổi chiều';
+    return 'Chào buổi tối';
+  };
+
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto">
-      <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">{getGreeting()}</h1>
-        <PWAInstallButton />
-      </header>
+    <div className="space-y-8 pb-12">
+      {/* Hero Greeting */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+            {getGreeting()}
+          </h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+            Lắng nghe những câu chuyện và kiến thức mới mỗi ngày
+          </p>
+        </div>
+      </div>
 
       {/* Featured Podcasts */}
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Podcast Nổi Bật</h2>
-        {loadingPodcasts ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-indigo-500" />
+          <h2 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+            Podcast Nổi Bật
+          </h2>
+        </div>
+
+        {loading && featuredPodcasts.length === 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="bg-surface animate-pulse rounded-xl aspect-square" />
+              <div key={i} className="aspect-square bg-neutral-200 dark:bg-neutral-800 animate-pulse rounded-2xl" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {podcasts?.map((podcast: any) => (
-              <Link to={`/podcast/${podcast.id}`} key={podcast.id} className="group bg-surface hover:bg-surface-hover p-4 rounded-xl transition-all duration-300">
-                <div className="aspect-square rounded-lg bg-gray-800 mb-4 overflow-hidden shadow-lg group-hover:shadow-2xl transition">
-                  {podcast.image && <img src={podcast.image} alt={podcast.title} className="w-full h-full object-cover" loading="lazy" />}
-                </div>
-                <h3 className="font-semibold text-sm truncate">{podcast.title}</h3>
-                <p className="text-xs text-muted truncate mt-1">{podcast.author}</p>
-              </Link>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {featuredPodcasts.map((podcast) => (
+              <PodcastCard key={podcast.id} podcast={podcast} />
             ))}
           </div>
         )}
       </section>
 
-      {/* Latest Episodes */}
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Mới Cập Nhật</h2>
-        {loadingEpisodes ? (
-           <div className="space-y-2">
-           {[...Array(3)].map((_, i) => (
-             <div key={i} className="bg-surface animate-pulse rounded-xl h-20 w-full" />
-           ))}
-         </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {latestEpisodes?.map((episode: any) => {
-              const isActive = currentEpisode?.id === episode.id;
-              return (
-                <div key={episode.id} className="group flex items-center gap-4 bg-surface hover:bg-surface-hover p-3 rounded-xl transition cursor-pointer">
-                  <div className="relative h-16 w-16 shrink-0 rounded-lg overflow-hidden bg-gray-800">
-                    {episode.image && <img src={episode.image} alt={episode.title} className="w-full h-full object-cover" loading="lazy" />}
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handlePlayEpisode(episode); }}
-                      className={`absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition ${isActive ? 'opacity-100' : ''}`}
-                    >
-                      {isActive && isPlaying ? <Pause className="fill-white w-6 h-6" /> : <Play className="fill-white w-6 h-6 ml-1" />}
-                    </button>
-                  </div>
-                  <div className="flex-1 min-w-0" onClick={() => handlePlayEpisode(episode)}>
-                    <h3 className={`font-semibold text-sm sm:text-base truncate ${isActive ? 'text-primary' : 'text-fg'}`}>{episode.title}</h3>
-                    <p className="text-xs sm:text-sm text-muted truncate mt-1">{episode.podcastTitle}</p>
-                  </div>
-                </div>
-              );
-            })}
+      {/* Recent Episodes */}
+      {recentEpisodes.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Radio className="w-5 h-5 text-indigo-500" />
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+              Mới Cập Nhật
+            </h2>
           </div>
-        )}
-      </section>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {recentEpisodes.map((episode) => (
+              <EpisodeCard key={episode.id} episode={episode} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
-}
+};
