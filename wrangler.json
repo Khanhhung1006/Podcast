@@ -1,7 +1,6 @@
 {
-  "name": "music-player",
-  "main": "dist/server.cjs",
-
+  "name": "podcast2",
+  "compatibility_date": "2026-09-11",
   "assets": {
     "directory": "./dist"
   }
