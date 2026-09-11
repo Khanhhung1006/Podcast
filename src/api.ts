@@ -1,50 +1,47 @@
-import { Podcast, Episode } from './types';
+export const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-export const PODCAST_FEEDS = [
+const DEFAULT_PODCASTS = [
   {
-    url: 'https://feed.podbean.com/nhkworldvietnamese/feed.xml',
-    categories: ['Tin tức', 'Nhật Bản']
+    feedUrl: 'https://feed.podbean.com/nhkworldvietnamese/feed.xml',
+    categories: ['Tin tức', 'Nhật Bản'],
   },
   {
-    url: 'https://anchor.fm/s/e8a760b0/podcast/rss',
-    categories: ['Tin tức', 'Học tập']
+    feedUrl: 'https://anchor.fm/s/e8a760b0/podcast/rss',
+    categories: ['Tin tức', 'Học tập'],
   },
   {
-    url: 'https://feeds.simplecast.com/qm_9M23r',
-    categories: ['Văn hóa', 'Đời sống']
+    feedUrl: 'https://feeds.simplecast.com/qm_9M23r',
+    categories: ['Văn hóa', 'Đời sống'],
   },
   {
-    url: 'https://sbs-vietnamese.libsyn.com/rss',
-    categories: ['Tin tức', 'Úc']
-  }
+    feedUrl: 'https://sbs-vietnamese.libsyn.com/rss',
+    categories: ['Tin tức', 'Úc'],
+  },
+  {
+    feedUrl: 'https://anchor.fm/s/19d07410/podcast/rss',
+    categories: ['Thiền', 'Tâm lý', 'Cuộc sống'],
+  },
+  {
+    feedUrl: 'https://feeds.soundcloud.com/users/soundcloud:users:341012174/sounds.rss',
+    categories: ['Lối sống', 'Tâm sự'],
+  },
+  {
+    feedUrl: 'https://anchor.fm/s/4cfb55bc/podcast/rss',
+    categories: ['Đầu tư', 'Tài chính', 'Phát triển bản thân'],
+  },
+  {
+    feedUrl: 'https://anchor.fm/s/6d0b6694/podcast/rss',
+    categories: ['Kỹ năng sống', 'Tư duy'],
+  },
 ];
 
-async function hashString(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-}
-
-export async function fetchPodcasts(): Promise<Podcast[]> {
-  try {
-    const response = await fetch('/api/podcasts');
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (e) {
-    console.warn('Backend API unavailable, falling back to client-side fetching', e);
+async function hashString(str: string) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
   }
-
-  const podcasts = await Promise.all(
-    PODCAST_FEEDS.map(feed => fetchRssFeedClient(feed.url, feed.categories).catch(err => {
-      console.error(`Failed to fetch ${feed.url}:`, err);
-      return null;
-    }))
-  );
-
-  return podcasts.filter((p): p is Podcast => p !== null);
+  return Math.abs(hash).toString(16).padStart(16, '0');
 }
 
 async function fetchRssFeedClient(feedUrl: string, categories: string[] = []) {
@@ -142,54 +139,116 @@ async function fetchRssFeedClient(feedUrl: string, categories: string[] = []) {
   const res = await fetch(apiUrl);
   if (!res.ok) throw new Error(`Failed to parse RSS feed: ${feedUrl}`);
   const data = await res.json();
+  
+  if (data.status !== 'ok') throw new Error(`RSS feed error: ${feedUrl}`);
 
-  if (data.status !== 'ok') {
-    throw new Error(`RSS conversion failed: ${data.message}`);
-  }
+  const feed = data.feed;
+  const items = data.items || [];
 
-  const episodes: Episode[] = await Promise.all(
-    (data.items || []).map(async (item: any) => {
-      const audioUrl = item.enclosure?.link || item.link;
-      const id = await hashString(item.guid || item.link || item.title);
+  const podcast = {
+    id: podcastId,
+    title: feed.title || 'Podcast',
+    description: feed.description || '',
+    image: feed.image || feed.thumbnail || '',
+    author: feed.author || '',
+    feedUrl,
+    categories,
+    lastUpdated: Date.now(),
+    episodes: [] as any[],
+  };
+
+  podcast.episodes = await Promise.all(
+    items.map(async (item: any) => {
+      const epId = await hashString(item.guid || item.link || item.enclosure?.link || item.title);
       return {
-        id,
+        id: epId,
         podcastId,
-        podcastTitle: data.feed.title,
-        podcastImage: data.feed.image || item.thumbnail,
-        title: item.title,
+        podcastTitle: podcast.title,
+        podcastImage: podcast.image,
+        title: item.title || '',
         description: item.description?.replace(/<[^>]*>?/gm, '') || '',
-        audioUrl,
-        duration: '',
-        pubDate: new Date(item.pubDate).getTime(),
-        image: item.thumbnail || data.feed.image
+        audioUrl: item.enclosure?.link || item.link || '',
+        duration: item.duration || '',
+        pubDate: item.pubDate ? new Date(item.pubDate).getTime() : 0,
+        image: item.thumbnail || item.enclosure?.thumbnail || podcast.image,
       };
     })
   );
 
-  return {
-    id: podcastId,
-    title: data.feed.title,
-    description: data.feed.description || '',
-    image: data.feed.image,
-    author: data.feed.author || '',
-    feedUrl,
-    categories,
-    lastUpdated: Date.now(),
-    episodes: episodes.filter(e => e.audioUrl)
-  };
+  return podcast;
 }
 
-export async function fetchPodcastById(id: string): Promise<Podcast | null> {
-  const podcasts = await fetchPodcasts();
-  return podcasts.find(p => p.id === id) || null;
-}
-
-export async function searchPodcasts(query: string): Promise<Podcast[]> {
-  const podcasts = await fetchPodcasts();
-  const q = query.toLowerCase();
-  return podcasts.filter(p => 
-    p.title.toLowerCase().includes(q) || 
-    p.description.toLowerCase().includes(q) ||
-    p.categories.some(c => c.toLowerCase().includes(q))
+async function fetchStaticFallbackAll() {
+  const podcasts = await Promise.allSettled(
+    DEFAULT_PODCASTS.map((p) => fetchRssFeedClient(p.feedUrl, p.categories))
   );
+
+  const validPodcasts = podcasts
+    .filter((p): p is PromiseFulfilledResult<any> => p.status === 'fulfilled')
+    .map((p) => p.value);
+
+  return validPodcasts;
+}
+
+export async function fetchPodcasts() {
+  try {
+    const res = await fetch(`${API_URL}/podcasts`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.warn('API backend unreachable, switching to client RSS mode');
+  }
+
+  const all = await fetchStaticFallbackAll();
+  return all.map(({ episodes, ...rest }) => rest);
+}
+
+export async function fetchPodcast(id: string) {
+  try {
+    const res = await fetch(`${API_URL}/podcasts/${id}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.warn('API backend unreachable, switching to client RSS mode');
+  }
+
+  const all = await fetchStaticFallbackAll();
+  const found = all.find((p) => p.id === id);
+  if (!found) throw new Error('Podcast not found');
+  return found;
+}
+
+export async function fetchLatestEpisodes(limit = 20) {
+  try {
+    const res = await fetch(`${API_URL}/episodes/latest?limit=${limit}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.warn('API backend unreachable, switching to client RSS mode');
+  }
+
+  const all = await fetchStaticFallbackAll();
+  const allEpisodes = all.flatMap((p) => p.episodes);
+  allEpisodes.sort((a, b) => b.pubDate - a.pubDate);
+  return allEpisodes.slice(0, limit);
+}
+
+export async function searchPodcasts(query: string) {
+  if (!query) return { podcasts: [], episodes: [] };
+  try {
+    const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.warn('API backend unreachable, switching to client RSS mode');
+  }
+
+  const all = await fetchStaticFallbackAll();
+  const q = query.toLowerCase();
+  
+  const podcasts = all
+    .filter((p) => p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q))
+    .map(({ episodes, ...rest }) => rest);
+
+  const episodes = all
+    .flatMap((p) => p.episodes)
+    .filter((e) => e.title.toLowerCase().includes(q) || e.description.toLowerCase().includes(q));
+
+  return { podcasts, episodes };
 }
