@@ -34,16 +34,24 @@ export default function FullPlayer({ onClose }: { onClose: () => void }) {
         style={{ backgroundImage: `url(${currentEpisode.image})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
       />
       
-      {/* Header */}
-      <header className="relative z-10 flex items-center justify-between p-6">
-        <button onClick={onClose} className="p-2 hover:bg-surface-hover rounded-full transition">
+      {/* Header with iOS Safe Area Top Padding */}
+      <header className="relative z-20 flex items-center justify-between px-6 pb-4 pt-[calc(env(safe-area-inset-top,0px)+1rem)]">
+        <button 
+          onClick={(e) => { e.stopPropagation(); onClose(); }} 
+          className="p-3 bg-surface hover:bg-surface-hover active:bg-surface-hover rounded-full transition min-w-[48px] min-h-[48px] flex items-center justify-center touch-manipulation z-30 cursor-pointer"
+          aria-label="Đóng"
+        >
           <X className="w-6 h-6" />
         </button>
         <div className="flex flex-col items-center">
           <span className="text-xs font-bold uppercase tracking-widest text-muted">Đang phát từ</span>
           <span className="text-sm font-semibold truncate max-w-[200px]">{currentEpisode.podcastTitle}</span>
         </div>
-        <button onClick={() => setShowSettings(!showSettings)} className="p-2 hover:bg-surface-hover rounded-full transition">
+        <button 
+          onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
+          className="p-3 bg-surface hover:bg-surface-hover active:bg-surface-hover rounded-full transition min-w-[48px] min-h-[48px] flex items-center justify-center touch-manipulation z-30 cursor-pointer"
+          aria-label="Cài đặt phát"
+        >
           <Settings2 className="w-6 h-6" />
         </button>
       </header>
@@ -123,11 +131,14 @@ export default function FullPlayer({ onClose }: { onClose: () => void }) {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="absolute bottom-0 left-0 right-0 bg-panel rounded-t-3xl p-6 z-20 shadow-2xl border-t border-border-color"
+            className="absolute bottom-0 left-0 right-0 bg-panel rounded-t-3xl p-6 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)] z-40 shadow-2xl border-t border-border-color"
           >
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold">Cài đặt phát</h3>
-              <button onClick={() => setShowSettings(false)} className="p-2 bg-surface hover:bg-surface-hover rounded-full">
+              <button 
+                onClick={() => setShowSettings(false)} 
+                className="p-3 bg-surface hover:bg-surface-hover rounded-full min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
