@@ -10,7 +10,6 @@
     "start": "node dist/server.cjs"
   },
   "dependencies": {
-    "@google/genai": "^0.1.1",
     "@tanstack/react-query": "^5.28.9",
     "cors": "^2.8.5",
     "express": "^4.19.2",
