@@ -1,0 +1,95 @@
+import { createClient } from '@libsql/client';
+import Parser from 'rss-parser';
+import crypto from 'crypto';
+
+const db = createClient({ url: 'file:local.db' });
+const parser = new Parser({
+  customFields: {
+    item: ['itunes:duration', 'itunes:image']
+  }
+});
+
+function generateId(str: string) {
+  return crypto.createHash('sha256').update(str).digest('hex').substring(0, 16);
+}
+
+async function addPodcast(feedUrl: string, categories: string[] = []) {
+  try {
+    const feed = await parser.parseURL(feedUrl);
+    const podcastId = generateId(feedUrl);
+    
+    let imageUrl = feed.image?.url || '';
+    if (!imageUrl && feed.itunes?.image) {
+      imageUrl = feed.itunes.image;
+    }
+    if (typeof imageUrl !== 'string') imageUrl = '';
+    
+    await db.execute({
+      sql: `INSERT INTO podcasts (id, title, description, image, author, feedUrl, categories, lastUpdated) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET 
+            title=excluded.title, description=excluded.description, image=excluded.image, author=excluded.author, lastUpdated=excluded.lastUpdated`,
+      args: [
+        podcastId, 
+        feed.title || '', 
+        String(feed.description || ''), 
+        String(imageUrl || ''),
+        String(feed.itunes?.author || feed.author || ''),
+        feedUrl,
+        JSON.stringify(categories),
+        Date.now()
+      ]
+    });
+
+    for (const item of feed.items) {
+      if (!item.enclosure?.url) continue;
+      
+      const episodeId = generateId(item.guid || item.link || item.enclosure.url);
+      
+      let epImageUrl = '';
+      if ((item as any)['itunes:image']) {
+        const i = (item as any)['itunes:image'];
+        epImageUrl = i?.$?.href || i?.href || (typeof i === 'string' ? i : '');
+      }
+      if (!epImageUrl) epImageUrl = imageUrl || '';
+      
+      let pubDate = 0;
+      if (item.pubDate) {
+        pubDate = new Date(item.pubDate).getTime();
+        if (isNaN(pubDate)) pubDate = 0;
+      }
+      
+      let duration = (item as any)['itunes:duration'] || '';
+      if (typeof duration !== 'string') duration = String(duration);
+
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO episodes (id, podcastId, title, description, audioUrl, duration, pubDate, image)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          episodeId,
+          podcastId,
+          String(item.title || ''),
+          String(item.contentSnippet || item.content || (item as any).description || ''),
+          String(item.enclosure.url),
+          duration,
+          pubDate,
+          String(epImageUrl)
+        ]
+      });
+    }
+    
+    console.log('Successfully added', feed.title, 'with', feed.items.length, 'episodes');
+    return true;
+  } catch (err) {
+    console.error('Error adding podcast:', err);
+    return false;
+  }
+}
+
+async function run() {
+  await addPodcast('https://anchor.fm/s/4cfb55bc/podcast/rss', ['Đầu tư', 'Tài chính', 'Phát triển bản thân']);
+  await addPodcast('https://anchor.fm/s/6d0b6694/podcast/rss', ['Kỹ năng sống', 'Tư duy']);
+  console.log('Done');
+}
+
+run();

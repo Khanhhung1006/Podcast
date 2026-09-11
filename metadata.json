@@ -1,0 +1,6 @@
+{
+  "name": "YÊU THU PODCAST",
+  "description": "Ứng dụng Web Podcast Tiếng Việt chất lượng cao",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
